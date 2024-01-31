@@ -54,11 +54,11 @@ The test suite covers various aspects of the contract, including deployment, min
 
 1. Clone the repository:
    ```
-   git clone [repository URL]
+   git clone https://github.com/HikuruOfficial/Hikuru-Blast-Staker-Passport.git
    ```
 2. Navigate to the project directory:
    ```
-   cd [project directory]
+   cd Hikuru-Blast-Staker-Passport
    ```
 3. Install dependencies:
    ```
