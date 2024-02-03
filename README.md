@@ -125,6 +125,21 @@ Compiled 14 Solidity files successfully.
 
 ```
 
+## Deployment and verification
+```npx hardhat run scripts/deploy.ts --network blast_sepolia```
+Deploying Hikuru Blast Staker Passport...
+Deployer:  0x4d052115975db4a43D7471fa6E08696D4c0355A4
+Hikuru Blast Staker Passport contract deployed to:  0xaB41D4bEa12f0640a2C17d68265aeb35Bc91C13b
+
+
+```npx hardhat verify --network blast_sepolia --constructor-args args.js 0xaB41D4bEa12f0640a2C17d68265aeb35Bc91C13b```
+Successfully submitted source code for contract
+contracts/HikuruStakerPassport.sol:HikuruStakerPassport at 0xaB41D4bEa12f0640a2C17d68265aeb35Bc91C13b
+for verification on the block explorer. Waiting for verification result...
+
+Successfully verified contract HikuruStakerPassport on the block explorer.
+[testnet.blastscan.io](https://testnet.blastscan.io/address/0xaB41D4bEa12f0640a2C17d68265aeb35Bc91C13b#code)
+
    
 ## Authors
 
