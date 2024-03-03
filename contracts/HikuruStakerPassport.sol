@@ -120,7 +120,7 @@ contract HikuruStakerPassport is ERC1155, Ownable, ERC1155Supply {
         _mint(to, badgeTypeId, 1, "");
         _usernames[msg.sender] = username_; // Set the username for the new NFT
         _uids[msg.sender] = uid_; // Set the user ID for the new NFT
-        referralsInviteCount[to]+=1;
+        referralsInviteCount[reffAddress]+=1;
     }
 
     function getUserPassport(address user) public view returns (UserPassportType memory) {
