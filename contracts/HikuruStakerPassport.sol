@@ -9,21 +9,25 @@ import "./IBlast.sol";
 
 
 
+
 interface IFeeClaimer {
-    function deposit(address _user, uint256 _amount) external payable returns (bool);
+    function deposit(address _user, uint8 _type) external payable returns (bool);
+    function depositERC20(address _user, address _token, uint256 _amount, uint8 _type) external returns (bool);
 }
 
 
 contract HikuruStakerPassport is ERC1155, Ownable, ERC1155Supply {
     uint256 public MINTING_FEE = 0.0004 ether;
-    address public hikuruPiggyBank;
+    address public HIKURU_PIGGY_BANK;
+    address public HIKURU_FEE_CLAIMER;
+    IFeeClaimer private FeeClaimer;
+
     IBlast public constant BLAST = IBlast(0x4300000000000000000000000000000000000002);
-    IFeeClaimer public feeClaimer; // Reference to the FeeClaimer contract
 
     mapping(address => string) private _URIs; // Mapping of token IDs to their URIs
     mapping(address => string) private _usernames; // Mapping of token IDs to usernames
     mapping(address => uint256) private _uids; // Mapping of token IDs to user IDs
-    mapping(address => uint256) public userScores; // Mapping of user addresses to scores
+    mapping(address => UserPassportType) private _userPassports; // Mapping of user addresses to scores
 
 
     struct BadgeType {
@@ -32,12 +36,16 @@ contract HikuruStakerPassport is ERC1155, Ownable, ERC1155Supply {
         uint256 endTime;
     }
 
+    struct UserPassportType  {
+        uint256 stackedEth;
+        uint256 stakedUsd;
+        uint256 firstStakedDate;
+        uint256 userScores;
+    }
+
 
     mapping(uint256 => BadgeType) public badgeTypes; // Mapping of badge types
-    mapping(address => bool) public isOwner; // Mapping for additional owners
-    mapping(address => uint256) public userBlastStakedEth; // User staked ETH amount
-    mapping(address => uint256) public userBlastStakedUsd; // User staked USD amount
-    mapping(address => uint256) public userBlastFirstStakedDate; // When user made first stake
+    mapping(address => bool) private isOwner; // Mapping for additional owners
     mapping(address => mapping(uint256 => bool)) public isAllowedToMint; // Mapping for whitelisted addresses
     mapping(address => mapping(uint256 => bool)) public hasMinted; // User protection to mint twice same type
     mapping(address => uint256) public referralsInviteCount;
@@ -51,8 +59,9 @@ contract HikuruStakerPassport is ERC1155, Ownable, ERC1155Supply {
     // Constructor sets up the initial owner and the piggy bank address
     constructor(address initialOwner, address _hikuruPiggyBank, address _feeClaimer, string memory zero_url_) ERC1155("") Ownable(initialOwner) {
         isOwner[initialOwner] = true;
-        hikuruPiggyBank = _hikuruPiggyBank;
-        feeClaimer = IFeeClaimer(_feeClaimer);
+        HIKURU_PIGGY_BANK = _hikuruPiggyBank;
+        HIKURU_FEE_CLAIMER = _feeClaimer;
+        FeeClaimer = IFeeClaimer(_feeClaimer);
 
         BLAST.configureClaimableYield();
         BLAST.configureClaimableGas(); 
@@ -72,13 +81,15 @@ contract HikuruStakerPassport is ERC1155, Ownable, ERC1155Supply {
         require(isAllowedToMint[msg.sender][badgeTypeId], "Not allowed to mint this badge type");
         require(bytes(badgeTypes[badgeTypeId].uri).length != 0, "Badge type does not exist");
         require(msg.value >= MINTING_FEE, "Incorrect payment");
-        require(!hasMinted[msg.sender][badgeTypeId], "Already minted this badge type");
+        // require(!hasMinted[msg.sender][badgeTypeId], "Already minted this badge type");
+
+        UserPassportType memory _userPassport = _userPassports[msg.sender];
 
         // user should stake first some amount of BLAST
-        require(userBlastStakedEth[msg.sender] > 0 || userBlastStakedUsd[msg.sender]>0, "User should stake first some amount of BLAST");
+        require(_userPassport.stackedEth > 0 || _userPassport.stakedUsd>0, "User should stake first some amount of BLAST");
 
         // Transfer the minting fee to the hikuru piggy bank
-        (bool feeTransferSuccess, ) = hikuruPiggyBank.call{value: msg.value}("");
+        (bool feeTransferSuccess, ) = HIKURU_PIGGY_BANK.call{value: msg.value}("");
         require(feeTransferSuccess, "Fee transfer failed");
 
         hasMinted[msg.sender][badgeTypeId] = true;
@@ -93,19 +104,17 @@ contract HikuruStakerPassport is ERC1155, Ownable, ERC1155Supply {
         require(isAllowedToMint[msg.sender][badgeTypeId], "Not allowed to mint this badge type");
         require(bytes(badgeTypes[badgeTypeId].uri).length != 0, "Badge type does not exist");
         require(msg.value >= MINTING_FEE, "Incorrect payment");
-        require(!hasMinted[msg.sender][badgeTypeId], "Already minted this badge type");
+        // require(!hasMinted[msg.sender][badgeTypeId], "Already minted this badge type");
 
         // Calculate referral fee (50% of the minting fee)
-        uint256 referralFee = msg.value / 2;
+        uint256 refferal_fee = msg.value / 2;
 
-        // Call the deposit function on the FeeClaimer contract
-        bool success = feeClaimer.deposit{value: referralFee}(payable(reffAddress), referralFee);
-        require(success, "Deposit to FeeClaimer failed");
+        // transfer fee to piggy bank
+        (bool status_pg, )=HIKURU_PIGGY_BANK.call{value: refferal_fee}("");
+        require(status_pg, "PB: Transfer failed");
+        bool status_rf=FeeClaimer.deposit{value: refferal_fee}(reffAddress, 1);
+        require(status_rf, "RF: Transfer failed");
 
-        // Transfer the remaining fee to the hikuru piggy bank
-        uint256 remainingFee = msg.value - referralFee;
-        (bool feeTransferSuccess, ) = hikuruPiggyBank.call{value: remainingFee}("");
-        require(feeTransferSuccess, "Fee transfer failed");
 
         hasMinted[msg.sender][badgeTypeId] = true;
         _mint(to, badgeTypeId, 1, "");
@@ -114,13 +123,14 @@ contract HikuruStakerPassport is ERC1155, Ownable, ERC1155Supply {
         referralsInviteCount[to]+=1;
     }
 
+    function getUserPassport(address user) public view returns (UserPassportType memory) {
+        return _userPassports[user];
+    }
+
 
     // Function to add an address to the whitelist and set their staked amounts
-    function addToWhitelistBlast(address user, uint256 stakedEth, uint256 stakedUsd, uint256 stakeDate, uint256 badgeTypeId, uint256 _userScore) public onlyHikuruOwner {
-        userBlastStakedEth[user] = stakedEth;
-        userBlastStakedUsd[user] = stakedUsd;
-        userBlastFirstStakedDate[user] = stakeDate;
-        userScores[user] = _userScore;
+    function addToWhitelistBlast(address user, UserPassportType _passport, uint256 badgeTypeId) public onlyHikuruOwner {
+        _userPassports[user] = _passport;
         isAllowedToMint[user][badgeTypeId] = true;
     }
 
@@ -143,9 +153,14 @@ contract HikuruStakerPassport is ERC1155, Ownable, ERC1155Supply {
     }
 
     // Function to update the Hikuru Piggy Bank address
-    function setHikuruPiggyBank(address newPiggyBank) public onlyHikuruOwner {
-        require(newPiggyBank != address(0), "New piggy bank address cannot be zero address");
-        hikuruPiggyBank = newPiggyBank;
+    function updatePiggyBank(address _newPiggyBank) public onlyHikuruOwner {
+        HIKURU_PIGGY_BANK = _newPiggyBank;
+    }
+
+    // update the fee claimer
+    function updateFeeClaimer(address _newFeeClaimer) public onlyHikuruOwner {
+        HIKURU_FEE_CLAIMER = _newFeeClaimer;
+        FeeClaimer = IFeeClaimer(_newFeeClaimer);
     }
 
     // Function to update the FeeClaimer contract address
@@ -177,6 +192,10 @@ contract HikuruStakerPassport is ERC1155, Ownable, ERC1155Supply {
         isOwner[owner] = false;
     }
 
+    function isOwnerAddress(address owner) public view returns (bool) {
+        return isOwner[owner];
+    }
+
     // Function to update the URI of a specific badge type
     function setBadgeURI(uint256 badgeTypeId, string memory newuri) public onlyHikuruOwner {
         badgeTypes[badgeTypeId].uri = newuri;
@@ -198,12 +217,12 @@ contract HikuruStakerPassport is ERC1155, Ownable, ERC1155Supply {
 
     function claimAllYield() external onlyHikuruOwner {
         // allow only the owner to claim the yield
-        BLAST.claimAllYield(address(this), hikuruPiggyBank);
+        BLAST.claimAllYield(address(this), HIKURU_PIGGY_BANK);
     }
 
     function claimMyContractsGas() external onlyHikuruOwner {
         // allow only the owner to claim the gas
-        BLAST.claimAllGas(address(this), hikuruPiggyBank);
+        BLAST.claimAllGas(address(this), HIKURU_PIGGY_BANK);
     }
 
 
@@ -211,7 +230,10 @@ contract HikuruStakerPassport is ERC1155, Ownable, ERC1155Supply {
     function royaltyInfo(uint256 _tokenId, uint256 _salePrice) external view
         returns (address receiver, uint256 royaltyAmount)
     {
-        return (hikuruPiggyBank, (_salePrice * 200) / 10000);
+        return (HIKURU_PIGGY_BANK, (_salePrice * 200) / 10000);
     }
 
 }
+
+
+
