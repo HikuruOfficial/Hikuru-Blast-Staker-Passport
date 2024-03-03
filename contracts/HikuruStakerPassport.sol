@@ -17,7 +17,7 @@ interface IFeeClaimer {
 
 
 contract HikuruStakerPassport is ERC1155, Ownable, ERC1155Supply {
-    uint256 public MINTING_FEE = 0.0004 ether;
+    uint256 public MINTING_FEE = 0.0005 ether;
     address public HIKURU_PIGGY_BANK;
     address public HIKURU_FEE_CLAIMER;
     IFeeClaimer private FeeClaimer;
