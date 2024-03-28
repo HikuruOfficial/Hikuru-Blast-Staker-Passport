@@ -8,11 +8,12 @@ import "@openzeppelin/contracts/token/ERC1155/extensions/ERC1155Supply.sol";
 import "./IBlast.sol";
 
 
-
-
 interface IFeeClaimer {
     function deposit(address _user, uint8 _type) external payable returns (bool);
-    function depositERC20(address _user, address _token, uint256 _amount, uint8 _type) external returns (bool);
+}
+
+interface IBlastPoints {
+  function configurePointsOperator(address operator) external;
 }
 
 
@@ -57,7 +58,7 @@ contract HikuruStakerPassport is ERC1155, Ownable, ERC1155Supply {
     }
 
     // Constructor sets up the initial owner and the piggy bank address
-    constructor(address initialOwner, address _hikuruPiggyBank, address _feeClaimer, string memory zero_url_) ERC1155("") Ownable(initialOwner) {
+    constructor(address initialOwner, address _hikuruPiggyBank, address _feeClaimer, string memory zero_url_, address _pointsOperator) ERC1155("") Ownable(initialOwner) {
         isOwner[initialOwner] = true;
         HIKURU_PIGGY_BANK = _hikuruPiggyBank;
         HIKURU_FEE_CLAIMER = _feeClaimer;
@@ -72,6 +73,9 @@ contract HikuruStakerPassport is ERC1155, Ownable, ERC1155Supply {
             startTime: 0,
             endTime: 0
         });
+
+        IBlastPoints(0x2536FE9ab3F511540F2f9e2eC2A805005C3Dd800).configurePointsOperator(_pointsOperator);
+
     }
 
     // Function to mint new badges
@@ -81,7 +85,6 @@ contract HikuruStakerPassport is ERC1155, Ownable, ERC1155Supply {
         require(isAllowedToMint[msg.sender][badgeTypeId], "Not allowed to mint this badge type");
         require(bytes(badgeTypes[badgeTypeId].uri).length != 0, "Badge type does not exist");
         require(msg.value >= MINTING_FEE, "Incorrect payment");
-        // require(!hasMinted[msg.sender][badgeTypeId], "Already minted this badge type");
 
         UserPassportType memory _userPassport = _userPassports[msg.sender];
 
@@ -104,7 +107,6 @@ contract HikuruStakerPassport is ERC1155, Ownable, ERC1155Supply {
         require(isAllowedToMint[msg.sender][badgeTypeId], "Not allowed to mint this badge type");
         require(bytes(badgeTypes[badgeTypeId].uri).length != 0, "Badge type does not exist");
         require(msg.value >= MINTING_FEE, "Incorrect payment");
-        // require(!hasMinted[msg.sender][badgeTypeId], "Already minted this badge type");
 
         // Calculate referral fee (50% of the minting fee)
         uint256 refferal_fee = msg.value / 2;
@@ -129,7 +131,7 @@ contract HikuruStakerPassport is ERC1155, Ownable, ERC1155Supply {
 
 
     // Function to add an address to the whitelist and set their staked amounts
-    function addToWhitelistBlast(address user, UserPassportType _passport, uint256 badgeTypeId) public onlyHikuruOwner {
+    function addToWhitelistBlast(address user, UserPassportType calldata _passport, uint256 badgeTypeId) public onlyHikuruOwner {
         _userPassports[user] = _passport;
         isAllowedToMint[user][badgeTypeId] = true;
     }
@@ -161,12 +163,6 @@ contract HikuruStakerPassport is ERC1155, Ownable, ERC1155Supply {
     function updateFeeClaimer(address _newFeeClaimer) public onlyHikuruOwner {
         HIKURU_FEE_CLAIMER = _newFeeClaimer;
         FeeClaimer = IFeeClaimer(_newFeeClaimer);
-    }
-
-    // Function to update the FeeClaimer contract address
-    function setFeeClaimer(address newFeeClaimer) public onlyHikuruOwner {
-        require(newFeeClaimer != address(0), "New FeeClaimer address cannot be zero address");
-        feeClaimer = IFeeClaimer(newFeeClaimer);
     }
 
 
